@@ -1,0 +1,30 @@
+name: Meme/Video submission
+description: Post a meme or video to the community feed
+title: "[POST] "
+labels: ["submission"]
+body:
+  - type: input
+    id: media_url
+    attributes:
+      label: Media URL (image or video)
+      description: Paste a direct link (e.g. https://i.imgur.com/..., https://cdn.example.com/..., or YouTube embed URL)
+      placeholder: https://...
+    validations:
+      required: true
+  - type: input
+    id: title
+    attributes:
+      label: Title
+      placeholder: Funny Roblox moment
+    validations:
+      required: true
+  - type: textarea
+    id: caption
+    attributes:
+      label: Caption
+      placeholder: Add context, jokes, or credits
+  - type: input
+    id: author
+    attributes:
+      label: Your name or handle
+      placeholder: xavier

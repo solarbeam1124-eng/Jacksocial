@@ -1,0 +1,80 @@
+name: Build memes data
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *" # hourly refresh, optional
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Collect submissions
+        id: collect
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            // Fetch all open issues labeled "submission"
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", labels: "submission"
+            });
+
+            function parseIssue(issue) {
+              // Pull fields from issue body using simple markers
+              // Issue forms deliver content as structured markdown, we’ll extract by headings and IDs
+              const body = issue.body || "";
+              // naive extraction helper
+              function getField(id) {
+                const re = new RegExp(`(?<=\
+
+\[\\s*${id}\\s*\\]
+
+\\s*\\n\\s*)[\\s\\S]*?(?=\\n\\n|$)`, "i");
+                const m = body.match(re);
+                return m ? m[0].trim() : "";
+              }
+              // Fallback: try lines after labels
+              const mediaUrl = getField("media_url") || (body.match(/Media URL.*\n([\s\S]*?)(?:\n|$)/i)?.[1] || "").trim();
+              const title = getField("title") || (body.match(/Title.*\n([\s\S]*?)(?:\n|$)/i)?.[1] || "").trim();
+              const caption = getField("caption") || (body.match(/Caption.*\n([\s\S]*?)(?:\n|$)/i)?.[1] || "").trim();
+              const author = getField("author") || (body.match(/Your name.*\n([\s\S]*?)(?:\n|$)/i)?.[1] || "").trim();
+
+              return {
+                id: issue.number,
+                created_at: issue.created_at,
+                updated_at: issue.updated_at,
+                title, caption, author,
+                media_url: mediaUrl
+              };
+            }
+
+            const posts = issues.map(parseIssue).filter(p => p.media_url && p.title);
+
+            return { posts };
+
+      - name: Write data file
+        run: |
+          mkdir -p data
+          cat > data/memes.json <<'JSON'
+          ${JSON.stringify(steps.collect.outputs.posts ? JSON.parse(steps.collect.outputs.posts).posts : [], null, 2)}
+          JSON
+
+      - name: Commit data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/memes.json
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Update memes.json"
+            git push
+          fi

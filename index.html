@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Community Memes & Videos</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background: #0b1220; color: #eaf2ff; }
+    header { padding: 18px; border-bottom: 1px solid rgba(255,255,255,0.1); background: #0f1628; }
+    header h1 { margin: 0; font-size: 22px; }
+    main { max-width: 960px; margin: 20px auto; padding: 0 16px; }
+    .actions { display: flex; gap: 10px; margin: 12px 0; }
+    .btn { background: #ff3355; color: white; border: none; padding: 10px 12px; border-radius: 10px; cursor: pointer; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+    .card { background: #121a2f; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; }
+    .media { aspect-ratio: 16/9; background: #0a1224; display: grid; place-items: center; }
+    .media img, .media iframe, .media video { width: 100%; height: 100%; object-fit: cover; }
+    .body { padding: 12px; }
+    .title { font-weight: 700; margin-bottom: 6px; }
+    .meta { font-size: 12px; opacity: 0.8; margin-bottom: 8px; }
+    .caption { font-size: 14px; line-height: 1.4; white-space: pre-wrap; }
+    footer { text-align: center; padding: 18px; opacity: 0.7; }
+    .notice { background: #1a243f; border: 1px solid rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Community Memes & Videos</h1>
+    <div class="actions">
+      <button class="btn" id="newPostBtn">Post a meme/video</button>
+      <button class="btn" id="refreshBtn">Refresh feed</button>
+    </div>
+    <div class="notice">
+      Submissions are collected via GitHub Issues and compiled automatically. Share direct media links (image/video URL or YouTube).
+    </div>
+  </header>
+
+  <main>
+    <section id="feed" class="grid" aria-live="polite">
+      <!-- Cards will be rendered here -->
+    </section>
+  </main>
+
+  <footer>
+    Powered by GitHub Pages + Issues + Actions. Media is loaded from external URLs.
+  </footer>
+
+  <script>
+    const REPO_USER = "solarbeam1124-eng"; // change to your username/org
+    const REPO_NAME = "your-repo-name";    // change to your repo
+    const DATA_PATH = "data/memes.json";
+
+    const feedEl = document.getElementById("feed");
+    const newPostBtn = document.getElementById("newPostBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+
+    newPostBtn.addEventListener("click", () => {
+      // Direct users to new Issue page using your submission template
+      const url = `https://github.com/${REPO_USER}/${REPO_NAME}/issues/new?template=submission.yml`;
+      window.open(url, "_blank");
+    });
+
+    refreshBtn.addEventListener("click", () => loadFeed(true));
+
+    function isYouTube(url) {
+      return /youtube\.com\/watch\?v=|youtu\.be\//i.test(url);
+    }
+    function toYouTubeEmbed(url) {
+      const m = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_\-]+)/);
+      const id = m ? m[1] : null;
+      return id ? `https://www.youtube.com/embed/${id}` : null;
+    }
+    function renderCard(post) {
+      const card = document.createElement("article");
+      card.className = "card";
+
+      const media = document.createElement("div");
+      media.className = "media";
+
+      if (isYouTube(post.media_url)) {
+        const src = toYouTubeEmbed(post.media_url);
+        const iframe = document.createElement("iframe");
+        iframe.src = src;
+        iframe.title = post.title;
+        iframe.frameBorder = "0";
+        iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+        iframe.allowFullscreen = true;
+        media.appendChild(iframe);
+      } else if (/\.(mp4|webm|ogg)(\?.*)?$/i.test(post.media_url)) {
+        const video = document.createElement("video");
+        video.src = post.media_url;
+        video.controls = true;
+        media.appendChild(video);
+      } else {
+        const img = document.createElement("img");
+        img.src = post.media_url;
+        img.alt = post.title;
+        media.appendChild(img);
+      }
+
+      const body = document.createElement("div");
+      body.className = "body";
+
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = post.title;
+
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const dateStr = new Date(post.created_at || Date.now()).toLocaleString();
+      meta.textContent = `${post.author || "Anonymous"} • ${dateStr}`;
+
+      const caption = document.createElement("div");
+      caption.className = "caption";
+      caption.textContent = post.caption || "";
+
+      body.appendChild(title);
+      body.appendChild(meta);
+      body.appendChild(caption);
+
+      card.appendChild(media);
+      card.appendChild(body);
+
+      return card;
+    }
+
+    async function loadFeed(force = false) {
+      try {
+        feedEl.innerHTML = "";
+        const bust = force ? `?t=${Date.now()}` : "";
+        const url = `https://${REPO_USER}.github.io/${REPO_NAME}/${DATA_PATH}${bust}`;
+        const res = await fetch(url, { cache: force ? "reload" : "default" });
+        const posts = await res.json();
+
+        if (!Array.isArray(posts) || posts.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "notice";
+          empty.textContent = "No posts yet. Be the first to share!";
+          feedEl.appendChild(empty);
+          return;
+        }
+
+        posts
+          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          .forEach(p => feedEl.appendChild(renderCard(p)));
+      } catch (e) {
+        const err = document.createElement("div");
+        err.className = "notice";
+        err.textContent = "Failed to load feed. Try again in a minute.";
+        feedEl.appendChild(err);
+        console.error(e);
+      }
+    }
+
+    loadFeed();
+  </script>
+</body>
+</html>
